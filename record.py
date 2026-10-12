@@ -3,10 +3,10 @@
 Markets: coins.txt plus every listed HIP-3 perp (refreshed at start). Writes
 rec/YYYYMMDD-HH.jsonl.gz (one line per message: {"r": recv_ms, "ch": "trades"|"bbo", "d": data}).
 
-  python record.py SECONDS [HANDOFF_SECONDS]
+  python record.py SECONDS [HANDOFF_SECONDS] [NEXT_SECONDS,NEXT_HANDOFF]
 
-Stops after SECONDS. If HANDOFF_SECONDS is given, runs `gh workflow run record.yml` at that
-point so the next run starts before this one ends (overlap; duplicates are harmless).
+Stops after SECONDS. If HANDOFF_SECONDS > 0, runs `gh workflow run record.yml` at that point
+so the next run starts before this one ends (overlap; duplicates are harmless).
 """
 import asyncio
 import gzip
@@ -45,7 +45,9 @@ async def run(coins, stop_at, handoff_at):
                 while time.time() < stop_at:
                     if not handed and time.time() >= handoff_at:
                         handed = True
-                        r = subprocess.run(["gh", "workflow", "run", "record.yml"], capture_output=True, text=True)
+                        ns, nh = NEXT.split(",")
+                        r = subprocess.run(["gh", "workflow", "run", "record.yml", "-f", f"seconds={ns}", "-f", f"handoff={nh}"],
+                                           capture_output=True, text=True)
                         print("handoff:", r.returncode, r.stderr.strip()[:200], flush=True)
                     try:
                         msg = await asyncio.wait_for(ws.recv(), timeout=20)
@@ -74,7 +76,8 @@ async def run(coins, stop_at, handoff_at):
 
 if __name__ == "__main__":
     secs = float(sys.argv[1])
-    handoff = float(sys.argv[2]) if len(sys.argv) > 2 else None
+    handoff = float(sys.argv[2]) if len(sys.argv) > 2 and float(sys.argv[2]) > 0 else None
+    NEXT = sys.argv[3] if len(sys.argv) > 3 else "21000,20400"
     cs = markets()
     print(len(cs), "markets", flush=True)
     t0 = time.time()
